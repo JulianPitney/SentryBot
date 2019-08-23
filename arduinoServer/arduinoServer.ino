@@ -31,14 +31,14 @@ bool STEPPERS_ON = false;
 const int DRIVER1_ENA = 4;
 const int DRIVER1_DIR = 3;
 const int DRIVER1_PUL = 2;
-const int STEPPER1_MAX_SPEED = 4000.0;
+const int STEPPER1_MAX_SPEED = 30000.0;
 const int STEPPER1_SPEED = 20.0;
 const int STEPPER1_ACCELERATION = 400.0;
 // Driver 2 config
 const int DRIVER2_ENA = 5;
 const int DRIVER2_DIR = 6;
 const int DRIVER2_PUL = 7;
-const int STEPPER2_MAX_SPEED = 4000.0;
+const int STEPPER2_MAX_SPEED = 30000.0;
 const int STEPPER2_SPEED = 20.0;
 const int STEPPER2_ACCELERATION = 400.0;
 int STEPPER_JOG_INCREMENT = 10;

@@ -4,10 +4,12 @@ import serial
 
 class ArduinoController(object):
 
-    def __init__(self, SERIAL_PORT_PATH, BAUDRATE):
+    def __init__(self, queue, mainQueue, SERIAL_PORT_PATH, BAUDRATE):
 
         self.SERIAL_PORT_PATH = SERIAL_PORT_PATH
         self.BAUDRATE = BAUDRATE
+        self.queue = queue
+        self.mainQueue = mainQueue
         # Motor configuration
         self.SEEK_SPEED = 8000
         self.JOG_MIN_SPEED = 800
@@ -43,18 +45,76 @@ class ArduinoController(object):
                 print("No response from arduino!")
                 break
 
-    # arduino 1 (uno for camera)
-    def start_pulses(self, numFramesToAcquire):
-        command = "PULSE " + str(numFramesToAcquire) + " " + str(config.TRIGGER_FREQUENCY_US) + "\n"
-        self.serialInterface.write(command.encode('UTF-8'))
-        # self.serialInterface.readline().decode()
-        # return True
 
-        # arduino 2 (mega for motors)
-    def move_motor_steps(self, motorIndex, steps, speed):
-        steps = int(steps)
-        command = "MOVE S" + str(motorIndex) + " " + str(steps) + " " + str(speed) + "\n"
+    def map_analog_to_discrete_range(self, value, leftMin, leftMax, rightMin, rightMax):
+
+        leftSpan = leftMax - leftMin
+        rightSpan = rightMax - rightMin
+        valueScaled = float(value - leftMin) / float(leftSpan)
+        return int(rightMin + (valueScaled * rightSpan))
+
+    def toggle_coarse_jog(self):
+
+        command = "TOGGLE_COARSE_JOG\n"
         self.serialInterface.write(command.encode('UTF-8'))
         response = self.serialInterface.readline().decode()
         print(response)
 
+
+    # arduino 1 (uno for camera)
+    def start_pulses(self, numFramesToAcquire):
+        command = "PULSE " + str(numFramesToAcquire) + " " + str(config.TRIGGER_FREQUENCY_US) + "\n"
+        self.serialInterface.write(command.encode('UTF-8'))
+        #self.serialInterface.readline().decode()
+
+
+
+    def toggle_led(self):
+
+        command = "TOGGLE_LED\n"
+        self.serialInterface.write(command.encode('UTF-8'))
+        response = self.serialInterface.readline().decode()
+        print(response)
+
+
+
+    def jog_motor(self, motorInputs):
+        speeds = []
+
+        for motorInput in motorInputs:
+
+            if motorInput > 0.3:
+                speed = self.map_analog_to_discrete_range(motorInput, 0.3, 1, self.JOG_MIN_SPEED, self.JOG_MAX_SPEED)
+            elif motorInput < -0.3:
+                speed = self.map_analog_to_discrete_range(motorInput, -0.3, -1, -self.JOG_MIN_SPEED, -self.JOG_MAX_SPEED)
+            else:
+                speed = 0
+
+            speeds.append(speed)
+
+        command = "JOG " + str(speeds[0]) + " " + str(speeds[1]) + " " + str(speeds[2]) + "\n"
+        self.serialInterface.write(command.encode('UTF-8'))
+        response = self.serialInterface.readline().decode()
+        print(response)
+
+    def process_msg(self, msg):
+        funcIndex = msg[1]
+
+        if funcIndex == 4:
+            self.jog_motor(msg[2])
+        elif funcIndex == 5:
+            self.toggle_coarse_jog()
+        elif funcIndex == 8:
+            self.toggle_led()
+
+
+    def mainloop(self):
+        while True:
+            if not self.queue.empty():
+                self.process_msg(self.queue.get())
+
+
+def launch_arduino_controller(queue, mainQueue, SERIAL_PORT_PATH, BAUDRATE):
+
+    ac = ArduinoController(queue, mainQueue, SERIAL_PORT_PATH, BAUDRATE)
+    ac.mainloop()

@@ -4,7 +4,7 @@ from losses.keras_ssd_loss import SSDLoss
 from models.keras_mobilenet_v2_ssdlite import mobilenet_v2_ssd
 import os
 import cv2
-import datetime
+from time import time
 from tqdm import tqdm
 
 class MobileNetV2SSD:
@@ -25,16 +25,16 @@ class MobileNetV2SSD:
         two_boxes_for_ar1 = True
         steps = None  # [8, 16, 32, 64, 100, 300]
         offsets = None  # [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-        clip_boxes = False
+        clip_boxes = True
         variances = [0.1, 0.1, 0.2, 0.2]
         coords = 'centroids'
         normalize_coords = True
         subtract_mean = [123, 117, 104]
         divide_by_stddev = 128
         swap_channels = None
-        confidence_thresh = 0.01
+        confidence_thresh = 0.7
         iou_threshold = 0.45
-        top_k = 10
+        top_k = 1
         nms_max_output_size = 400
         return_predictor_sizes = False
 
@@ -54,8 +54,6 @@ class MobileNetV2SSD:
         self.model = model
 
     def predict(self, img, threshold=0.85):
-        ori_img_size = img.shape
-        img = cv2.resize(img, (self.image_size[0], self.image_size[1]))
         padding_frame = np.zeros(self.image_size)
         padding_frame[:, :, 0] = img
         padding_frame[:, :, 1] = img
@@ -70,50 +68,49 @@ class MobileNetV2SSD:
         y_pred.sort(key=confidence_key)
         box = y_pred[0][0]
         if box[0] == 1 and box[1] >= threshold:
-            xmin = int(box[2] * ori_img_size[0] / self.image_size[0])
-            ymin = int(box[3] * ori_img_size[1] / self.image_size[1])
-            xmax = int(box[4] * ori_img_size[0] / self.image_size[1])
-            ymax = int(box[5] * ori_img_size[1] / self.image_size[0])
-        print(ori_img_size)
-        print(xmin, ymin, xmax, ymax)
+            xmin = box[2]
+            ymin = box[3]
+            xmax = box[4]
+            ymax = box[5]
         return xmin, ymin, xmax, ymax
+
         
 class Tracker:
     def __init__(self):
         self.M = MobileNetV2SSD()
         self.tracker = cv2.TrackerMOSSE_create()
-        self.status = False
+        self.detect_track_cycle_period = 0
         self.image_size = (300, 300, 3)
+        self.xmin, self.ymin, self.xmax, self.ymax = 0, 0, 0, 0
+        self.status = False
 
     def track(self, frame):
-        # frame = cv2.resize(frame, (self.image_size[0], self.image_size[1]))
+        ori_img_size = frame.shape
+        frame = cv2.resize(frame, (self.image_size[0], self.image_size[1]))
 
-
-        if not self.status:
+        if (self.detect_track_cycle_period % 3) == 0:
             xmin, ymin, xmax, ymax = self.M.predict(frame)
-            if xmin != -1:
-                self.tracker.init(frame, (xmin, ymin, xmax, ymax))
-                self.status = True
-        else:
-            (success, box) = self.tracker.update(frame)
-            if not success:
-                self.status = False
-                xmin, ymin, xmax, ymax = -1, -1, -1, -1
-            else:
-                (x, y, w, h) = [int(v) for v in box]
-                xmin, ymin, xmax, ymax = x, y, x + w, y + h
-        return xmin, ymin, xmax, ymax
 
+            # if not self.status:
+            #     xmin, ymin, xmax, ymax = self.M.predict(frame)
+            #     if xmin != -1:
+            #         self.tracker.init(frame, (xmin, ymin, xmax, ymax))
+            #         self.status = True
+            # else:
+            #     (success, box) = self.tracker.update(frame)
+            #     if not success:
+            #         self.status = False
+            #         self.xmin, self.ymin, self.xmax, self.ymax = -1, -1, -1, -1
+            #     else:
+            #         (x, y, w, h) = [int(v) for v in box]
+            #         self.xmin, self.ymin, self.xmax, self.ymax = x, y, x + w, y + h
 
-if __name__ == '__main__':
-    T = Tracker()
-    img_path = os.path.join("experiments", "imgs", "000001.jpg")
-    img = cv2.imread(img_path)
-    start_time = datetime.datetime.now()
-    for i in tqdm(range(100)):
-        xmin, ymin, xmax, ymax = T.track(img)
-    end_time = datetime.datetime.now()
-    print("FPS: %.3f"%(100. / float((end_time-start_time).seconds)))
-    cv2.rectangle(img, (xmin, ymin), (xmax, ymax), (255, 255, 255), 2, 8)
-    cv2.imshow('test', img)
-    cv2.waitKey()
+            self.xmin = int(xmin * float(ori_img_size[1]) / float(self.image_size[0]))
+            self.ymin = int(ymin * float(ori_img_size[0]) / float(self.image_size[1]))
+            self.xmax = int(xmax * float(ori_img_size[1]) / float(self.image_size[0]))
+            self.ymax = int(ymax * float(ori_img_size[0]) / float(self.image_size[1]))
+
+        self.detect_track_cycle_period += 1
+
+        return self.xmin, self.ymin, self.xmax, self.ymax
+

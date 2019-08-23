@@ -7,11 +7,10 @@ import numpy as np
 from ctypes import sizeof, c_uint8, c_uint64
 from mmap import mmap
 import multiprocessing as mp
-
+from time import time
 class TriggerType:
     SOFTWARE = 1
     HARDWARE = 2
-
 
 
 def shared_array(shape, path, mode, dtype):
@@ -57,19 +56,13 @@ def concurrent_save(shape, path, queue, mainQueue, shape2, path2):
 
     sharedFrameBuffer = shared_array(shape, path, 'r+b', dtype=c_uint8)
     sharedFramesSavedCounter = shared_array(shape2, path2, 'r+b', dtype=c_uint64)
-    videoWriters = []
     readyToSave = False
     currentCameraIndex = 0
     T = Tracker()
 
-    cv2.namedWindow('detection', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('detection', 720, 540)
-
-
-
-    if config.DISPLAY_VIDEO_FEEDS:
-        windowNames = init_video_windows()
-
+    cv2.namedWindow('live', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('live', 720, 540)
+    cv2.moveWindow('live', 720,0)
     mainQueue.put('READY')
 
     while True:
@@ -79,50 +72,36 @@ def concurrent_save(shape, path, queue, mainQueue, shape2, path2):
 
             # Start recording signal
             if msg == 'START':
-                videoWriters = init_video_writers()
                 readyToSave = True
-                print("SAVE_PROC: Starting save!")
             # Save frame request from capture process
             elif isinstance(msg, int) and readyToSave:
 
                 bufferIndex = msg
-                xmin, ymin, xmax, ymax = -1, -1, -1, -1
-                recimg = np.zeros((640, 480, 1), dtype="uint8")
+
+
+                # detection
                 frame = sharedFrameBuffer[bufferIndex]
-                if bufferIndex % 30 == 0:
-                    xmin, ymin, xmax, ymax = T.track(frame)
+                xmin, ymin, xmax, ymax = T.track(frame)
+                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255), 2, 8)
+                cv2.imshow('live', frame)
+                cv2.waitKey(1)
 
-                    if xmin != -1:
-                        cv2.rectangle(recimg, (xmin, ymin), (xmax, ymax), (255), 2, 8)
-                        cv2.imshow('detection',recimg)
-
-                videoWriters[currentCameraIndex].write(frame)
-                if config.DISPLAY_VIDEO_FEEDS:
-                    cv2.imshow(windowNames[currentCameraIndex], frame)
-                    cv2.waitKey(1)
+                print("xmin=" + str(xmin) + " ymin=" + str(ymin) + " " + "xmax=" + str(xmax) + " " + "ymax=" + str(ymax))
 
                 currentCameraIndex += 1
                 if currentCameraIndex >= config.NUM_CAMERAS:
                     currentCameraIndex = 0
-
                 sharedFramesSavedCounter[0][0] += 1
 
             # End of recording signal from capture process. Reset.
             elif msg == 'END':
-
                 currentCameraIndex = 0
                 sharedFramesSavedCounter[0][0] = 0
                 readyToSave = False
-                for videoWriter in videoWriters:
-                    videoWriter.release()
-                videoWriters = []
-                print("SAVE_PROC: Done saving!")
 
             # Exit application signal
             elif msg == 'SHUTDOWN':
                 cv2.destroyAllWindows()
-                for videoWriter in videoWriters:
-                    videoWriter.release()
                 return 0
 
 

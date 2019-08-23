@@ -1,35 +1,32 @@
-import config
-import FlirController as fc
-import ArduinoController as ac
+from multiprocessing import Process, Queue
+from FlirController import *
+from ArduinoController import *
+from PS4Controller import *
+
+
+def launch_system_processes():
+    queues = [Queue(0), Queue(0), Queue(0)]
+    processes = []
+
+    processes.append(Process(target=launch_arduino_controller, args=(queues[1], queues[0], 'COM6', 115200,)))
+    processes.append(Process(target=launch_ps4_controller, args=(queues[2], queues[0],)))
+
+    for process in processes:
+        process.start()
+    return processes, queues
+
 
 def main():
 
-    flirController = fc.CameraController()
-    arduino_motors = ac.ArduinoController('COM6', 115200)
+    processes, queues = launch_system_processes()
+    #fc = CameraController()
+
 
     while True:
-
-        menuSelection = input("[1] ACTIVATE SENTRY\nInput: ")
-        try:
-           menuSelection = int(menuSelection)
-        except ValueError:
-            print("Invalid selection, try again.")
-            continue
-
-        if menuSelection == 1:
-            flirController.synchronous_record()
-
-        elif menuSelection == 2:
-            steps = int(input("Steps: "))
-
-            arduino_motors.move_motor_steps(1,steps, 4000)
-            arduino_motors.move_motor_steps(2, steps, 4000)
-            arduino_motors.move_motor_steps(1, -steps, 4000)
-            arduino_motors.move_motor_steps(2, -steps, 4000)
-
+        if not queues[0].empty():
+            msg = queues[0].get()
+            queues[msg[0]].put(msg)
 
 
 if __name__ == '__main__':
-	main()
-
-
+    main()
