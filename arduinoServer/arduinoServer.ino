@@ -1,9 +1,5 @@
 #include <AccelStepper.h>
-#include <Servo.h>
 #include <CmdParser.hpp>
-#include <Encoder.h>
-
-
 
 /*
    When a valid command is received, it will be stored in this struct.
@@ -25,20 +21,25 @@ uint32_t cmdParserTimeout = 2000;
 
 
 
+
+// Arduino LED
+const int LED = 13;
+const int IMAGING_LED_PIN = 42;
+
 bool STEPPERS_ON = false;
 
 // Driver 1 config
-const int DRIVER1_ENA = 4;
+const int DRIVER1_ENA = 2;
 const int DRIVER1_DIR = 3;
-const int DRIVER1_PUL = 2;
-const int STEPPER1_MAX_SPEED = 30000.0;
+const int DRIVER1_PUL = 4;
+const int STEPPER1_MAX_SPEED = 4000.0;
 const int STEPPER1_SPEED = 20.0;
 const int STEPPER1_ACCELERATION = 400.0;
 // Driver 2 config
-const int DRIVER2_ENA = 5;
-const int DRIVER2_DIR = 6;
+const int DRIVER2_ENA = 6;
+const int DRIVER2_DIR = 5;
 const int DRIVER2_PUL = 7;
-const int STEPPER2_MAX_SPEED = 30000.0;
+const int STEPPER2_MAX_SPEED = 4000.0;
 const int STEPPER2_SPEED = 20.0;
 const int STEPPER2_ACCELERATION = 400.0;
 int STEPPER_JOG_INCREMENT = 10;
@@ -46,7 +47,6 @@ int STEPPER_JOG_INCREMENT = 10;
 // Steppers
 AccelStepper STEPPER1(AccelStepper::DRIVER, DRIVER1_PUL, DRIVER1_DIR);
 AccelStepper STEPPER2(AccelStepper::DRIVER, DRIVER2_PUL, DRIVER2_DIR);
-
 
 
 void setup() {
@@ -57,6 +57,9 @@ void setup() {
     delay(100);
   }
   Serial.write("ARDUINO READY\n");
+  pinMode(LED, OUTPUT);
+  pinMode(IMAGING_LED_PIN, OUTPUT);
+  digitalWrite(IMAGING_LED_PIN, LOW);
 
   // Setup STEPPER1
   STEPPER1.setMaxSpeed(STEPPER1_MAX_SPEED);
@@ -199,6 +202,45 @@ int runCommand() {
         rc = getCommand();
       }
   }
+  else if(command->cmd == "TOGGLE_LED")
+  {
+    if(command->argc != 1)
+    {
+      sendResponse("Invalid number of parameters!");
+      rc = -1;
+    }
+    else
+    {
+      rc = toggleLEDCommand();
+      sendResponse("LED_SET:" + String(rc));
+    }
+  }
+  else if(command->cmd == "JOG")
+  {
+    if(command->argc != 4)
+    {
+      sendResponse("Invalid number of parameters!");
+      rc = -1;
+    }
+    else
+    {
+      rc = jogCommand();
+      sendResponse("JOG COMPLETED");
+    }
+  }
+  else if(command->cmd == "TOGGLE_COARSE_JOG")
+  {
+    if(command->argc != 1)
+    {
+      sendResponse("Invalid number of parameters!");
+      rc = -1;
+    }
+    else
+    {
+      rc = toggleCoarseJogCommand();
+      sendResponse("COARSE_JOG_SET:" + String(rc));
+    }
+  }
   else
   {
       sendResponse("Invalid command!");
@@ -266,6 +308,49 @@ int calcStepsFromSpeed(int speed) {
   return steps;
 }
 
+int jogCommand() {
+
+  int speed1 = command->params[1].toInt();
+  int speed2 = command->params[2].toInt();
+
+  int speeds[] = {speed1, speed2};
+  int steps[] = {0,0};
+
+  for(int i = 0; i < 2; i++)
+  {
+    steps[i] = calcStepsFromSpeed(speeds[i]);
+  }
+
+  STEPPER1.move(steps[0]);
+  STEPPER1.setSpeed(speeds[0]);
+  STEPPER2.move(steps[1]);
+  STEPPER2.setSpeed(speeds[1]);
+
+
+  while(STEPPER1.targetPosition() != STEPPER1.currentPosition() || STEPPER2.targetPosition() != STEPPER2.currentPosition())
+  {
+    STEPPER1.runSpeedToPosition();
+    STEPPER2.runSpeedToPosition();
+  }
+
+ return 0;
+}
+
+int toggleCoarseJogCommand() {
+
+
+  if(STEPPER_JOG_INCREMENT == 10)
+  {
+    STEPPER_JOG_INCREMENT = 40;
+  }
+  else if(STEPPER_JOG_INCREMENT == 40)
+  {
+    STEPPER_JOG_INCREMENT = 10;
+  }
+
+  return STEPPER_JOG_INCREMENT;
+}
+
 
 
 /*
@@ -322,6 +407,12 @@ int getCommand() {
   return rc;
 }
 
+int toggleLEDCommand() {
+
+  int newState = !digitalRead(IMAGING_LED_PIN);
+  digitalWrite(IMAGING_LED_PIN, newState);
+  return newState;
+}
 
 /*
    Helper function for selecting the stepper motor requested by
@@ -432,6 +523,7 @@ void loop() {
 
   // New command received (0), Parse error (-1), Listening timed out (1)
   int rc = listenForCommandWithTimeout();
+
   switch(rc)
   {
     case 0:

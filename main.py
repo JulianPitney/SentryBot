@@ -5,11 +5,12 @@ from PS4Controller import *
 
 
 def launch_system_processes():
-    queues = [Queue(0), Queue(0), Queue(0)]
+    queues = [Queue(0), Queue(0), Queue(0), Queue(0)]
     processes = []
 
     processes.append(Process(target=launch_arduino_controller, args=(queues[1], queues[0], 'COM6', 115200,)))
     processes.append(Process(target=launch_ps4_controller, args=(queues[2], queues[0],)))
+    processes.append(Process(target=launch_camera_controller, args=(queues[3], queues[0],)))
 
     for process in processes:
         process.start()
@@ -19,8 +20,6 @@ def launch_system_processes():
 def main():
 
     processes, queues = launch_system_processes()
-    #fc = CameraController()
-
 
     while True:
         if not queues[0].empty():

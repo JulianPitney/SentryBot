@@ -116,6 +116,9 @@ class PS4Controller(object):
         elif event.button == 5:
             # Tell arduinoController to toggle LED
             self.mainQueue.put([1, 8, []])
+        elif event.button == 6:
+            # Tell cameraController to start video feed
+            self.mainQueue.put([3, 0, []])
 
     def process_button_up_event(self, event):
         pass

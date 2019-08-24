@@ -110,9 +110,12 @@ def concurrent_save(shape, path, queue, mainQueue, shape2, path2):
 class CameraController(object):
 
 
-    def __init__(self):
+    def __init__(self, queue, mainQueue):
 
-        self.arduinoController = ac.ArduinoController('COM3', 115200)
+        self.queue = queue
+        self.mainQueue = mainQueue
+
+        self.arduinoController = ac.ArduinoController(None, None, 'COM3', 115200)
         self.CHOSEN_TRIGGER = TriggerType.HARDWARE
         self.camList = None
         self.system = None
@@ -184,8 +187,8 @@ class CameraController(object):
         self.set_camera_gain(camera, config.GAIN)
         self.set_isp(nodemap, False)
         self.set_camera_fps(nodemap, config.FPS)
-        camera.OffsetX.SetValue(int((1440 - config.WIDTH) / 2))
-        camera.OffsetY.SetValue(int((1080 - config.HEIGHT) / 2))
+        #camera.OffsetX.SetValue(int((1440 - config.WIDTH) / 2))
+        #camera.OffsetY.SetValue(int((1080 - config.HEIGHT) / 2))
         # In order to access the node entries, they have to be casted to a pointer type (CEnumerationPtr here)
         node_acquisition_mode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
         if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
@@ -558,3 +561,24 @@ class CameraController(object):
             #print("CAM1 " + str(ts1b - ts1))
             #print("CAM2 " + str(ts2b - ts2))
         """
+
+
+
+    def process_msg(self, msg):
+        funcIndex = msg[1]
+
+        if funcIndex == 0:
+            print("sig received")
+            self.synchronous_record()
+
+
+    def mainloop(self):
+        while True:
+            if not self.queue.empty():
+                self.process_msg(self.queue.get())
+
+
+def launch_camera_controller(queue, mainQueue):
+
+    cc = CameraController(queue, mainQueue)
+    cc.mainloop()
